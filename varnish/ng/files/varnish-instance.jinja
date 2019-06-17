@@ -1,0 +1,12 @@
+{%- set listen = config.get('port', 6081)|int %}
+{%- set listen_admin = config.get('port-admin', listen + 1) %}
+{%- set memory = config.get('memory', '512m') -%}
+#
+# This file is managed by salt. Do not edit by hand.
+#
+# Systemd env, not shell... must be on single line...
+
+DAEMON_OPTS="-a :{{ listen }} -T :{{ listen_admin }} -s malloc,{{ memory }}
+    {%- for key, value in config.get('params', {})|dictsort %} 
+        {#- #} -p {{ key }}='{{ value }}'
+    {%- endfor %}"

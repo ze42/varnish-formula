@@ -1,4 +1,6 @@
 {% from "varnish/ng/map.jinja" import varnish_settings with context %}
+include:
+  - .service
 
 varnish_multi_instances_unit_placeholder:
   file.managed:
@@ -16,12 +18,16 @@ varnish_multi_instances_unit_base:
   - name: /etc/systemd/system/varnish@.service.d/00-base.conf
   - target: /lib/systemd/system/varnish.service
   - makedirs: True
+  - require:
+    - service: varnish.service
 
 varnish_multi_instance_template:
   file.managed:
   - name: /etc/systemd/system/varnish@.service.d/10-template.conf
   - source: salt://{{ slspath }}/files/varnish-unit.conf
   - makedirs: True
+  - require:
+    - service: varnish.service
 
 varnish instances service.systemctl_reload:
   module.run:
@@ -36,6 +42,7 @@ varnish {{ instance }} vcl template:
   file.managed:
   - name: {{ options.config }}
   - replace: False
+  - unless: test -f {{ options.config }}
   - source: salt://varnish/files/default/etc/varnish/default.vcl.jinja
   - template: jinja
   - user: {{ options.get('user') }}
@@ -43,11 +50,19 @@ varnish {{ instance }} vcl template:
   - makedirs: True
   - dir_mode: 2755
   - mode: {{ options.get('mode', '644') }}
+  - require:
+    - service: varnish.service
+  - require_in:
+    - service: varnish {{ instance }} service
 
 varnish {{ instance }} vcl:
   file.symlink:
   - name: /etc/varnish/{{instance}}.vcl
   - target: {{ options.config }}
+  - require:
+    - service: varnish.service
+  - require_in:
+    - service: varnish {{ instance }} service
 
 varnish {{ instance }} defaults:
   file.managed:
@@ -56,6 +71,10 @@ varnish {{ instance }} defaults:
   - template: jinja
   - context:
       config: {{ options|json }}
+  - require:
+    - service: varnish.service
+  - require_in:
+    - service: varnish {{ instance }} service
 
 varnish {{ instance }} secret:
   file.managed:
@@ -66,6 +85,10 @@ varnish {{ instance }} secret:
   - user: root
   - group: {{ options.get('group', 'root') }}
   - mode: 440
+  - require:
+    - service: varnish.service
+  - require_in:
+    - service: varnish {{ instance }} service
 
 varnish {{ instance }} service:
   service.running:
@@ -73,8 +96,10 @@ varnish {{ instance }} service:
   - enable: True
   - reload: True
   - require:
-    - file: varnish {{ instance }} secret
-    - file: varnish {{ instance }} vcl
-    - file: varnish {{ instance }} vcl template
     - module: varnish instances service.systemctl_reload
+  module.run:
+  - name: test.sleep
+  - length: 5
+  - onchanges:
+    - service: varnish {{ instance }} service
 {% endfor %}
